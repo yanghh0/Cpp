@@ -44,6 +44,14 @@ struct NMANAGER
     struct NWORKER *workers;
     struct NJOB *jobs;
 
+    unsigned int total_jobs;
+
+    unsigned int job_count;        // 任务计数变量
+    pthread_mutex_t count_mutex;
+
+    pthread_cond_t end_cond;
+    pthread_mutex_t end_mutex;
+
     pthread_cond_t jobs_cond;
     pthread_mutex_t jobs_mutex;   // 任何一个线程在干活之前都需要先获取锁
 };
@@ -70,6 +78,14 @@ static void *nThreadCallback(void *arg)
         LL_REMOVE(job, worker->pool->jobs);
         pthread_mutex_unlock(&worker->pool->jobs_mutex);
         job->func(job);
+
+        pthread_mutex_lock(&worker->pool->count_mutex);
+        worker->pool->job_count++;
+        if (worker->pool->job_count == worker->pool->total_jobs) {
+            pthread_cond_signal(&worker->pool->end_cond);
+        }
+        pthread_mutex_unlock(&worker->pool->count_mutex);
+
     }
     free(worker);
     pthread_exit(NULL); 
@@ -85,9 +101,13 @@ int nThreadPoolCreate(nThreadPool *pool, int numWorkers)
 
     pthread_cond_t blank_cond = PTHREAD_COND_INITIALIZER;
     memcpy(&pool->jobs_cond, &blank_cond, sizeof(pthread_cond_t));
+    memcpy(&pool->end_cond, &blank_cond, sizeof(pthread_cond_t));
 
     pthread_mutex_t blank_mutex = PTHREAD_MUTEX_INITIALIZER;
     memcpy(&pool->jobs_mutex, &blank_mutex, sizeof(pthread_mutex_t));
+    memcpy(&pool->count_mutex, &blank_mutex, sizeof(pthread_mutex_t));
+    memcpy(&pool->end_mutex, &blank_mutex, sizeof(pthread_mutex_t));
+
 
     for(int i = 0; i<numWorkers; i++) {
         struct NWORKER *worker = (struct NWORKER*)malloc(sizeof(struct NWORKER));  // 创建一个线程
@@ -138,21 +158,40 @@ int nThreadPoolDestroy(nThreadPool *pool)
 
 void print(struct NJOB *job) 
 {
-    printf("%d\n", *((int*)job->user_data));
+    printf("**%d**\n", *((int*)job->user_data));
+    unsigned int a = 0;
+    for (unsigned int i = 0; i < 10000; i++) {
+        for (unsigned int j = 0; j < 10000; j++) {
+
+        }
+    }
+
+
 }
 
 int main() 
 {
     nThreadPool *pool = (nThreadPool *)malloc(sizeof(nThreadPool));
     nThreadPoolCreate(pool, 16); // create 16 worker
-    NJOB t[1000];    // 1000 jobs
-    for(int i = 0; i < 1000; i++) {
+
+#define JOB_COUNT 100
+
+    NJOB t[JOB_COUNT];
+    pool->total_jobs = JOB_COUNT;
+    pool->job_count = 0;
+
+    for(int i = 0; i < JOB_COUNT; i++) {
         t[i].func = print;
         t[i].user_data = (int *)malloc(sizeof(int));
         (*(int*)t[i].user_data) = i;
         nThreadPoolPush(pool, &t[i]);
     }
-    nThreadPoolDestroy(pool);  // 这里并没有等到所有任务都结束
+
+    if(pool->job_count != JOB_COUNT) {
+        pthread_cond_wait(&pool->end_cond, &pool->end_mutex);
+        printf("==>%d\n", pool->job_count);
+        nThreadPoolDestroy(pool);
+    }
 }
 
 #endif
