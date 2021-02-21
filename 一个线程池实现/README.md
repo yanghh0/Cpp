@@ -1,0 +1,1 @@
+g++ -o obj thread_pool.cc -lpthread
