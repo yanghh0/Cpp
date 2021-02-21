@@ -152,7 +152,7 @@ int main()
         (*(int*)t[i].user_data) = i;
         nThreadPoolPush(pool, &t[i]);
     }
-    nThreadPoolDestroy(pool);
+    nThreadPoolDestroy(pool);  // 这里并没有等到所有任务都结束
 }
 
 #endif
